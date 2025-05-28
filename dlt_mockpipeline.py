@@ -1,6 +1,74 @@
 import dlt
 import json
+import requests
 from datetime import datetime
+
+# Json of format
+# {"name": "bob", "summary": "bob is a software engineer", "jobs": [{"title": "Software Engineer", "company": "TechCorp", "location": "Remote", "description": "Developing software solutions."}]}
+def chunk_for_weaviate(json_data):
+    """
+    Simple function to chunk JSON data for Weaviate.
+    Creates logical chunks from structured JSON data.
+    
+    Args:
+        json_data (dict): JSON object to chunk
+    
+    Returns:
+        list: List of chunks with text and metadata
+    """
+    chunks = []
+    
+    # Extract basic info
+    name = json_data.get('name', 'Unknown')
+    summary = json_data.get('summary', '')
+    
+    # Create main profile chunk
+    profile_text = f"Name: {name}"
+    if summary:
+        profile_text += f"\nSummary: {summary}"
+    
+    chunks.append({
+        "text": profile_text,
+        "metadata": {
+            "type": "profile",
+            "name": name,
+            "chunk_id": f"{name.lower().replace(' ', '_')}_profile"
+        }
+    })
+    
+    # Process jobs if they exist
+    jobs = json_data.get('jobs', [])
+    for i, job in enumerate(jobs):
+        job_text = f"Person: {name}\n"
+        job_text += f"Job Title: {job.get('title', 'N/A')}\n"
+        job_text += f"Company: {job.get('company', 'N/A')}\n"
+        job_text += f"Location: {job.get('location', 'N/A')}\n"
+        job_text += f"Description: {job.get('description', 'N/A')}"
+        
+        chunks.append({
+            "text": job_text,
+            "metadata": {
+                "type": "job",
+                "name": name,
+                "job_title": job.get('title', 'N/A'),
+                "company": job.get('company', 'N/A'),
+                "chunk_id": f"{name.lower().replace(' ', '_')}_job_{i}"
+            }
+        })
+    
+    return chunks
+
+def download_mock_data_json(link):
+    response = requests.get(link)
+    if response.status_code == 200:
+        try:
+            return response.json()  # Parse JSON response
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {e}")
+            return None
+    else:
+        print(f"Error fetching data: {response.status_code}")
+        return None
 
 def process_linkedin_links_with_dlt(linkedin_links, output_path="demo_chunks.json"):
     # Create a simple dlt pipeline for tracking
@@ -15,10 +83,9 @@ def process_linkedin_links_with_dlt(linkedin_links, output_path="demo_chunks.jso
         for link in linkedin_links:
             print(f"Processing: {link}")
             try:
-                # pdf_path = download_google_drive_pdf(link)
-                # text = extract_text(pdf_path)
-                # TODO define function for chunking
-                chunks = chunk_for_weaviate(text)
+
+                resultJson = download_mock_data_json(link)                
+                chunks = chunk_for_weaviate(resultJson)
                 all_chunks.extend(chunks)
 
                 # Yield tracking info
@@ -50,8 +117,3 @@ def process_linkedin_links_with_dlt(linkedin_links, output_path="demo_chunks.jso
     print(f"✅ Load info: {info}")
 
     return info
-
-# Chunk PDFs
-import os
-process_linkedin_links_with_dlt(linkedin_links, output_path="demo_chunks.json")
-     
