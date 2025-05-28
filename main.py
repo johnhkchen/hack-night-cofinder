@@ -1,6 +1,10 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import os
 import weaviate
 from weaviate.classes.init import Auth
-import os
+from weaviate.agents.query import QueryAgent
+from weaviate.agents.utils import print_query_agent_response
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -8,15 +12,16 @@ load_dotenv()
 weaviate_url = os.environ["WEAVIATE_URL"]
 weaviate_api_key = os.environ["WEAVIATE_API_KEY"]
 
-client = weaviate.connect_to_weaviate_cloud(
-    cluster_url=weaviate_url,
-    auth_credentials=Auth.api_key(weaviate_api_key),
-)
+def push_to_weaviate(job):
+    client = weaviate.connect_to_weaviate_cloud(
+        cluster_url=weaviate_url,
+        auth_credentials=Auth.api_key(weaviate_api_key),
+    )
 
-print(client.is_ready())  # Should print: `True`
+    print(client.is_ready())  # Should print: `True`
 
-
-from fastapi import FastAPI
+    client.close()  # Free up resources
+    return {"status": "dummy"}
 
 app = FastAPI()
 
@@ -30,12 +35,42 @@ async def query_weaviate():
     return {"message": "Hello Weaviate"}
 
 
+# Define request model
+class QueryInput(BaseModel):
+    prompt: str
+
+@app.post("/weaviate/")
+async def query_weaviate(input: QueryInput):
+    try:
+        headers = {
+            "OPENAI-API-KEY": os.environ["OPENAI_API_KEY"],
+        }
+
+        client = weaviate.connect_to_weaviate_cloud(
+            cluster_url=os.environ["WEAVIATE_URL"],
+            auth_credentials=Auth.api_key(os.environ["WEAVIATE_API_KEY"]),
+            headers=headers,
+        )
+
+        qa = QueryAgent(
+            client=client,
+            collections=["JobReqs"],
+        )
+
+        response = qa.run(input.prompt)
+
+        # Display using class method; you can also use .__str__() or parse response object manually
+        output = response.display()
+        client.close()
+        return {"response": output}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/weaviate/")
 async def add_to_vector_db():
-    return {"status": "dummy"}
-
+    return push_to_weaviate("a sample job description")
 
 fake_items_db = [
     {
@@ -91,4 +126,3 @@ Full-time
 async def read_item(skip: int = 0, limit: int = 10):
     return fake_items_db[skip : skip + limit]
 
-client.close()  # Free up resources
