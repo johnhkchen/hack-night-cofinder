@@ -1,2 +1,2 @@
 run:
-    uv run main.py
+    uv run fastapi dev main.py
